@@ -1,10 +1,10 @@
 # CWS Listing Copy
 
 ## Store Name
-UnMuteMe — Auto Unmute for Google Meet
+UnMuteMe — Auto Unmute for Meet & Teams
 
 ## Short Description (132 char max)
-Never say "sorry, I was on mute" again. UnMuteMe auto-unmutes Google Meet the moment you start speaking while muted.
+Never say "sorry, I was on mute" again. UnMuteMe auto-unmutes Google Meet & Microsoft Teams when you start speaking.
 
 ## Detailed Description
 
@@ -12,12 +12,12 @@ You know the moment. You're talking. Everyone is staring. Someone types "you're 
 
 UnMuteMe fixes that.
 
-The moment you start speaking while muted in a Google Meet call, UnMuteMe instantly clicks the unmute button for you. By the time you finish your first word, you're already live.
+The moment you start speaking while muted in Google Meet or Microsoft Teams, UnMuteMe instantly clicks the unmute button for you. By the time you finish your first word, you're already live.
 
 **How it works:**
 - Watches for speech only when you're muted
 - Detects the first syllable via the browser's built-in Web Speech API
-- Clicks the Meet mute button directly — same as if you'd done it yourself
+- Clicks the mute button directly — same as if you'd done it yourself
 - Disarms after each auto-unmute and only re-arms when you mute yourself again, so it never re-mutes you
 
 **What it does NOT do:**
@@ -27,13 +27,14 @@ The moment you start speaking while muted in a Google Meet call, UnMuteMe instan
 
 **Privacy first:**
 - No analytics, no telemetry, no external APIs.
-- Microphone access stays inside your Chrome browser, used only on meet.google.com.
+- Microphone access stays inside your Chrome browser, used only on meet.google.com and teams.microsoft.com.
 - Open source: https://github.com/pektimole/unmuteme
 
 **Works with:**
 - Google Meet (meet.google.com)
+- Microsoft Teams (teams.microsoft.com, browser version)
 - Any microphone: built-in, Bluetooth, wired headsets
-- English and German Meet UI
+- English and German UI
 
 Built by someone who got tired of typing "sorry, I was on mute".
 
