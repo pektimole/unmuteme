@@ -1,6 +1,6 @@
-// Auto Unmute Meet
+// UnMuteMe — Auto Unmute for Google Meet & Microsoft Teams
 // Detects speech while muted and automatically unmutes you.
-// No voice commands needed - just talks and it unmutes.
+// No voice commands needed - just talk and it unmutes.
 
 let isEnabled = true;
 let recognition = null;
@@ -24,7 +24,11 @@ chrome.storage.onChanged.addListener((changes) => {
 // --- Mute detection ---
 
 function getMuteButton() {
-  // Match any button whose aria-label mentions microphone/mikrofon.
+  // Teams: reliable ID selector.
+  const teamsBtn = document.getElementById("mic-button");
+  if (teamsBtn) return teamsBtn;
+
+  // Meet: match any button whose aria-label mentions microphone/mikrofon.
   const all = document.querySelectorAll("[aria-label]");
   for (const el of all) {
     const label = (el.getAttribute("aria-label") || "").toLowerCase();
@@ -44,6 +48,8 @@ function isMuted() {
   const dataMuted = btn.getAttribute("data-is-muted");
   if (dataMuted === "true") return true;
   if (dataMuted === "false") return false;
+  // "Turn on microphone" / "Mikrofon aktivieren" = Meet muted
+  // "Unmute mic" = Teams muted
   return label.includes("turn on") || label.includes("aktivieren") || label.includes("unmute");
 }
 
