@@ -54,6 +54,32 @@
     }
     input:checked + .slider { background: #1a73e8; }
     input:checked + .slider:before { transform: translateX(18px); }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      color: #444;
+      margin-top: 12px;
+      min-height: 20px;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: #bbb;
+    }
+    .dot-green  { background: #34a853; }
+    .dot-grey   { background: #bbb; }
+    .dot-red    { background: #ea4335; }
+    .dot-orange { background: #fbbc04; }
+    .help {
+      margin-top: 8px;
+      font-size: 11px;
+      color: #888;
+      line-height: 1.4;
+    }
   </style>
 </head>
 <body>
@@ -67,6 +93,13 @@
       <span class="slider"></span>
     </label>
   </div>
+
+  <div class="status-row">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">Open a Meet or Teams tab first.</span>
+  </div>
+
+  <p class="help" id="helpText"></p>
 
   <script src="popup.js"></script>
 </body>

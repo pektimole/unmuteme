@@ -1,14 +1,16 @@
 // UnMuteMe — Auto Unmute for Google Meet & Microsoft Teams
 // Detects speech while muted and automatically unmutes you.
-// No voice commands needed - just talk and it unmutes.
 
 let isEnabled = true;
 let recognition = null;
-// Latch: armed = we're allowed to auto-unmute. Disarmed after we unmute you.
-// Re-arms whenever we observe a fresh manual mute (unmuted -> muted).
 let armed = true;
 let lastMutedState = null;
 let muteWatcher = null;
+let micBlocked = false;
+
+function setStatus(s) {
+  chrome.storage.local.set({ status: s });
+}
 
 // Load settings
 chrome.storage.local.get(["isEnabled"], (data) => {
@@ -16,107 +18,166 @@ chrome.storage.local.get(["isEnabled"], (data) => {
 });
 
 chrome.storage.onChanged.addListener((changes) => {
-  if (changes.isEnabled !== undefined) isEnabled = changes.isEnabled.newValue;
-  if (!isEnabled) stopRecognition();
-  else startRecognition();
+  if (changes.isEnabled === undefined) return;
+  isEnabled = changes.isEnabled.newValue;
+  if (!isEnabled) {
+    stopRecognition();
+    setStatus("disabled");
+  } else {
+    micBlocked = false;
+    startRecognition();
+  }
 });
 
 // --- Mute detection ---
 
 function getMuteButton() {
-  // Teams: reliable ID selector.
-  const teamsBtn = document.getElementById("mic-button");
-  if (teamsBtn) return teamsBtn;
+  // Teams legacy: reliable ID
+  const byId = document.getElementById("mic-button");
+  if (byId) return byId;
 
-  // Meet: match any button whose aria-label mentions microphone/mikrofon.
-  const all = document.querySelectorAll("[aria-label]");
-  for (const el of all) {
-    const label = (el.getAttribute("aria-label") || "").toLowerCase();
-    if (label.includes("microphone") || label.includes("mikrofon") || label.includes("mic ")) {
-      return el;
-    }
-  }
-  return null;
+  // CSS attribute selectors — case-insensitive, covers all locales and attribute variants.
+  // Ordered by specificity: aria-label is canonical, data-tooltip is Meet's secondary attr.
+  return (
+    document.querySelector('[aria-label*="microphone" i]') ||
+    document.querySelector('[aria-label*="mikrofon" i]') ||
+    document.querySelector('[data-tooltip*="microphone" i]') ||
+    document.querySelector('[data-tooltip*="mikrofon" i]') ||
+    document.querySelector('[title*="microphone" i]') ||
+    // Teams new client
+    document.querySelector('[data-tid="toggle-mute"]') ||
+    document.querySelector('[id^="microphone"]') ||
+    null
+  );
 }
 
 function isMuted() {
   const btn = getMuteButton();
   if (!btn) return null;
-  const label = (btn.getAttribute("aria-label") || "").toLowerCase();
-  // "Turn on microphone" / "Mikrofon aktivieren" = currently muted
-  // Also handle data-is-muted attribute if present.
+
+  // Explicit data attribute (Teams-style, most reliable)
   const dataMuted = btn.getAttribute("data-is-muted");
   if (dataMuted === "true") return true;
   if (dataMuted === "false") return false;
-  // "Turn on microphone" / "Mikrofon aktivieren" = Meet muted
-  // "Unmute mic" = Teams muted
-  return label.includes("turn on") || label.includes("aktivieren") || label.includes("unmute");
+
+  // aria-pressed: true = button is "on" = mic is muted (depends on implementation)
+  // Meet uses aria-label as the primary signal, skip aria-pressed to avoid inversion.
+
+  const label = [
+    btn.getAttribute("aria-label"),
+    btn.getAttribute("data-tooltip"),
+    btn.getAttribute("title"),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  // "Turn on microphone" / "Mikrofon aktivieren" / "Unmute" = currently muted
+  if (
+    label.includes("turn on") ||
+    label.includes("aktivieren") ||
+    label.includes("einschalten") ||
+    label.includes("unmute")
+  )
+    return true;
+
+  // "Turn off microphone" / "Mikrofon deaktivieren" / "Mute your" = currently unmuted
+  if (
+    label.includes("turn off") ||
+    label.includes("deaktivieren") ||
+    label.includes("ausschalten") ||
+    label.includes("mute your") ||
+    label.includes("mikrofo") // "Mikrofon aus" partial — catches DE "turn off" variants
+  )
+    return false;
+
+  return null; // unknown — don't guess
 }
 
 function unmute() {
   const btn = getMuteButton();
   if (!btn) return;
   btn.click();
-  console.log("[AutoUnmute] Unmuted you!");
-  // Disarm. Only re-arm after observing a manual mute (unmuted -> muted transition).
-  armed = false;
+  console.log("[UnMuteMe] Unmuted!");
+  armed = false; // re-arms on next manual mute (unmuted -> muted transition)
 }
 
 // --- Speech Recognition ---
 
 function startRecognition() {
-  if (recognition) return;
+  if (recognition || micBlocked) return;
 
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    console.error("[AutoUnmute] SpeechRecognition API not available");
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    console.error("[UnMuteMe] SpeechRecognition API unavailable");
+    setStatus("api-unavailable");
     return;
   }
 
-  recognition = new SpeechRecognition();
+  recognition = new SR();
   recognition.continuous = true;
   recognition.interimResults = true;
-  recognition.lang = "de-DE";
+  // Auto-detect language. Falls back to browser UI language, then en-US.
+  recognition.lang = navigator.language || "en-US";
+
+  recognition.onaudiostart = () => {
+    setStatus("listening");
+  };
 
   recognition.onresult = (event) => {
     if (!isEnabled || !armed) return;
-    if (!isMuted()) return;
+    const muted = isMuted();
+    if (!muted) return; // unmuted or state unknown — don't interfere
 
-    const transcript = event.results[event.resultIndex][0].transcript.trim();
+    const transcript =
+      event.results[event.resultIndex][0].transcript.trim();
     if (transcript.length > 0) {
-      console.log("[AutoUnmute] Speech detected while muted:", transcript);
+      console.log("[UnMuteMe] Speech while muted:", transcript);
       unmute();
     }
   };
 
   recognition.onerror = (event) => {
-    console.warn("[AutoUnmute] Recognition error:", event.error);
-    // Always try to recover, regardless of error type.
-    restartRecognition();
+    console.warn("[UnMuteMe] Recognition error:", event.error);
+    recognition = null;
+
+    if (event.error === "not-allowed") {
+      // Microphone permission denied. Don't loop — surface to user.
+      micBlocked = true;
+      setStatus("mic-blocked");
+      return;
+    }
+
+    if (event.error === "no-speech") {
+      // Normal silence timeout — restart quietly.
+      setTimeout(startRecognition, 300);
+      return;
+    }
+
+    // Other transient errors (network, aborted, etc.) — restart with backoff.
+    setTimeout(startRecognition, 1500);
   };
 
   recognition.onend = () => {
-    console.log("[AutoUnmute] Recognition ended.");
+    console.log("[UnMuteMe] Recognition ended.");
     recognition = null;
-    if (isEnabled) setTimeout(startRecognition, 300);
+    if (isEnabled && !micBlocked) {
+      setTimeout(startRecognition, 300);
+    }
   };
 
   recognition.start();
-  console.log("[AutoUnmute] Listening for speech-while-muted...");
+  console.log("[UnMuteMe] Listening (lang:", recognition.lang, ")");
 }
 
 function stopRecognition() {
   if (recognition) {
     recognition.onend = null;
+    recognition.onerror = null;
     recognition.abort();
     recognition = null;
-    console.log("[AutoUnmute] Stopped");
+    console.log("[UnMuteMe] Stopped");
   }
-}
-
-function restartRecognition() {
-  stopRecognition();
-  setTimeout(startRecognition, 1000);
 }
 
 // --- Init ---
@@ -124,30 +185,39 @@ function restartRecognition() {
 function startMuteWatcher() {
   if (muteWatcher) return;
   muteWatcher = setInterval(() => {
-    const btn = getMuteButton();
     const muted = isMuted();
-    if (muted === null) return; // Pre-join lobby: mute button not in DOM yet.
+    if (muted === null) return;
+
     if (muted !== lastMutedState) {
-      console.log("[AutoUnmute] Mute state changed:", lastMutedState, "->", muted, "(label:", btn && btn.getAttribute("aria-label"), ")");
+      const btn = getMuteButton();
+      console.log(
+        "[UnMuteMe] Mute state:",
+        lastMutedState,
+        "->",
+        muted,
+        "| label:",
+        btn && btn.getAttribute("aria-label")
+      );
     }
-    // Re-arm on every fresh manual mute (unmuted -> muted transition).
+
     if (lastMutedState === false && muted === true) {
       armed = true;
-      console.log("[AutoUnmute] Re-armed (you muted yourself).");
+      console.log("[UnMuteMe] Re-armed (manual mute).");
     }
+
     lastMutedState = muted;
-    // Watchdog: if recognition died, bring it back.
-    if (isEnabled && !recognition) {
-      console.log("[AutoUnmute] Watchdog: recognition is dead, restarting.");
+
+    // Watchdog: recognition died — revive it.
+    if (isEnabled && !recognition && !micBlocked) {
       startRecognition();
     }
   }, 100);
 }
 
 function waitForMeetUI() {
-  const btn = getMuteButton();
-  if (btn) {
-    console.log("[AutoUnmute] Meet UI ready. Watching for speech-while-muted.");
+  setStatus("waiting");
+  if (getMuteButton()) {
+    console.log("[UnMuteMe] UI ready.");
     lastMutedState = isMuted();
     startMuteWatcher();
     if (isEnabled) startRecognition();

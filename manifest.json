@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "UnMuteMe",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Never say 'sorry, I was on mute' again. Auto-unmutes Google Meet and Microsoft Teams when you start speaking while muted.",
   "author": "Tim-Ole Pek",
   "homepage_url": "https://github.com/pektimole/unmuteme",
@@ -27,7 +27,11 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://meet.google.com/*", "https://teams.microsoft.com/*"],
+      "matches": [
+        "https://meet.google.com/*",
+        "https://teams.microsoft.com/*",
+        "https://teams.live.com/*"
+      ],
       "js": ["content.js"]
     }
   ]
